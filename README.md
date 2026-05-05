@@ -30,9 +30,9 @@ This project processes and analyzes a student lifestyle dataset from Topfaith Un
 9. Save the cleaned dataset to `Cleaned_dataset.csv`.
 10. Generate visualizations showing how lifestyle relates to key features.
 11. Train and compare three classification models:
-- Logistic Regression
-- Decision Tree
-- Random Forest
+   -Logistic Regression
+   -Decision Tree
+   -Random Forest
 
 12. Evaluate models using accuracy, precision, recall, and F1 score.
 
