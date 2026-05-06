@@ -28,7 +28,7 @@ LIFESTYLE_LABELS = {
     2: "Healthy",
 }
 
-# The possible input values for each survey feature shown in the UI.
+# The input values for each survey feature shown in the UI.
 CATEGORY_OPTIONS = {
     "Age": ["16 - 18", "19 -21", "22 -24"],
     "Gender": ["Female", "Male"],
