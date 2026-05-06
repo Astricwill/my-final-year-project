@@ -3,24 +3,32 @@ import pandas as pd
 import joblib
 from pathlib import Path
 
+# Configure the Streamlit page title and layout.
 st.set_page_config(
     page_title="Student Lifestyle Predictor",
     layout="wide",
 )
 
+# Determine the base directory of this script so paths work reliably.
 BASE_DIR = Path(__file__).resolve().parent
+
+# Try to load the cleaned dataset from either the data folder or the project root.
 DATA_PATHS = [
     BASE_DIR / "data" / "Cleaned_dataset.csv",
     BASE_DIR / "Cleaned_dataset.csv",
 ]
+
+# Path to the saved machine learning model file.
 MODEL_PATH = BASE_DIR / "model" / "rf_model.pkl"
 
+# Label mapping used to convert numeric model outputs into readable lifestyle categories.
 LIFESTYLE_LABELS = {
     0: "Unhealthy",
     1: "Moderately Healthy",
     2: "Healthy",
 }
 
+# The possible input values for each survey feature shown in the UI.
 CATEGORY_OPTIONS = {
     "Age": ["16 - 18", "19 -21", "22 -24"],
     "Gender": ["Female", "Male"],
@@ -44,11 +52,13 @@ CATEGORY_OPTIONS = {
     "StressManagement": ["Fairly well", "Poorly", "Very poorly", "Very well"],
 }
 
+# Create numeric encodings for each categorical option so the trained model can use them.
 ENCODING_MAPS = {
     key: {option: idx for idx, option in enumerate(options)}
     for key, options in CATEGORY_OPTIONS.items()
 }
 
+# The order in which features must appear when constructing the model input dataframe.
 FEATURE_ORDER = [
     "Age",
     "Gender",
@@ -68,6 +78,7 @@ FEATURE_ORDER = [
 
 @st.cache_data
 def load_data() -> pd.DataFrame:
+    """Load the cleaned dataset from disk and cache the result."""
     for path in DATA_PATHS:
         if path.exists():
             return pd.read_csv(path)
@@ -75,12 +86,14 @@ def load_data() -> pd.DataFrame:
 
 @st.cache_resource
 def load_model():
+    """Load the pre-trained Random Forest model from disk."""
     if not MODEL_PATH.exists():
         raise FileNotFoundError("Model file not found at model/rf_model.pkl. Run preprocessing and save the model first.")
     return joblib.load(MODEL_PATH)
 
 @st.cache_data
 def get_lifestyle_distribution(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a count of each lifestyle category for charting."""
     return (
         df["Lifestyle"]
         .value_counts()
@@ -91,6 +104,7 @@ def get_lifestyle_distribution(df: pd.DataFrame) -> pd.DataFrame:
 
 @st.cache_data
 def get_summary_metrics(df: pd.DataFrame) -> dict:
+    """Compute summary metrics shown in the overview tab."""
     return {
         "Total Responses": len(df),
         "Healthy Students": int((df["Lifestyle"] == 2).sum()),
@@ -101,11 +115,13 @@ def get_summary_metrics(df: pd.DataFrame) -> dict:
 
 
 def encode_inputs(inputs: dict) -> pd.DataFrame:
+    """Convert user selections into the numeric input format expected by the model."""
     encoded = {key: ENCODING_MAPS[key][value] for key, value in inputs.items()}
     return pd.DataFrame([encoded], columns=FEATURE_ORDER)
 
 
 def predict_lifestyle(model, input_df: pd.DataFrame) -> tuple[int, float, dict]:
+    """Run the model prediction and return the predicted label, confidence, and probabilities."""
     prediction = int(model.predict(input_df)[0])
     probabilities = model.predict_proba(input_df)[0]
     proba_by_label = {LIFESTYLE_LABELS[i]: float(probabilities[i]) for i in range(len(probabilities))}
@@ -114,20 +130,25 @@ def predict_lifestyle(model, input_df: pd.DataFrame) -> tuple[int, float, dict]:
 
 
 def main():
+    """Build the Streamlit UI and connect user inputs to data, charts, and predictions."""
     st.title("Student Lifestyle Prediction App")
     st.write(
         "Use this app to explore the student lifestyle dataset, review model performance, "
         "and predict a lifestyle category from student survey responses."
     )
 
+    # Load data and model once and reuse them across the app.
     df = load_data()
     model = load_model()
 
+    # Create three main app tabs for overview, data exploration, and prediction.
     overview, explorer, predictor = st.tabs(["Overview", "Explore Data", "Predict Lifestyle"])
 
     with overview:
         st.subheader("Dataset summary")
         metrics = get_summary_metrics(df)
+
+        # Display high-level dataset metrics in four side-by-side cards.
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Total Responses", metrics["Total Responses"])
         col2.metric("Healthy", metrics["Healthy Students"])
@@ -142,6 +163,8 @@ def main():
         st.write(
             "This app uses the cleaned student lifestyle dataset and a pre-trained Random Forest model."
         )
+
+        # Show descriptive statistics for input features, score, and lifestyle label.
         stats = df[FEATURE_ORDER + ["score", "Lifestyle"]].describe().T
         st.dataframe(stats.style.format({"mean": "{:.2f}", "std": "{:.2f}"}))
 
@@ -152,9 +175,12 @@ def main():
         st.markdown("### Filter and inspect")
         fac_filter = st.multiselect("Filter by faculty", CATEGORY_OPTIONS["Faculty"], default=CATEGORY_OPTIONS["Faculty"])
         age_filter = st.multiselect("Filter by age group", CATEGORY_OPTIONS["Age"], default=CATEGORY_OPTIONS["Age"])
+
+        # Convert selected text values into encoded values for filtering against the stored dataset.
         fac_values = [ENCODING_MAPS["Faculty"][x] for x in fac_filter] if fac_filter else list(ENCODING_MAPS["Faculty"].values())
         age_values = [ENCODING_MAPS["Age"][x] for x in age_filter] if age_filter else list(ENCODING_MAPS["Age"].values())
         filtered = df[df["Faculty"].isin(fac_values) & df["Age"].isin(age_values)]
+
         st.write(f"Showing {len(filtered)} rows after filtering.")
         st.dataframe(filtered.head(50))
 
@@ -175,6 +201,8 @@ def main():
             ],
             index=0,
         )
+
+        # Generate a bar chart for the selected feature using the filtered dataset.
         feature_counts = filtered[chart_feature].value_counts().sort_index()
         if chart_feature in CATEGORY_OPTIONS:
             reverse_map = {v: k for k, v in ENCODING_MAPS[chart_feature].items()}
@@ -188,6 +216,8 @@ def main():
         with st.form(key="lifestyle_form"):
             cols = st.columns(2)
             inputs = {}
+
+            # Build a selectbox for each model feature so users can choose survey values.
             for idx, feature in enumerate(FEATURE_ORDER):
                 target_col = cols[idx % 2]
                 inputs[feature] = target_col.selectbox(feature, CATEGORY_OPTIONS[feature])
@@ -198,6 +228,7 @@ def main():
             prediction, confidence, probabilities = predict_lifestyle(model, input_df)
             st.success(f"Predicted lifestyle: {LIFESTYLE_LABELS[prediction]}")
             st.write(f"Confidence: {confidence:.1%}")
+
             prob_df = pd.DataFrame.from_dict(probabilities, orient="index", columns=["Probability"]).rename_axis("Lifestyle").reset_index()
             st.bar_chart(prob_df.set_index("Lifestyle"))
             st.markdown("### Encoded model input")
